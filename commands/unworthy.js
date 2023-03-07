@@ -16,7 +16,7 @@ module.exports = {
         if (!kickMember.kickable) return await interaction.reply({content: "this user is too powerful for me to kick", ephemeral: true})
 
         let reason = interaction.options.getString('reason');
-        if (!reason) reason = "Sorry, you currently don't seem like a great fit for LGU."
+        if (!reason) reason = `Sorry, you currently don't seem like a great fit for **${interaction.guild.name} .`
 
         const dmEmbed = new EmbedBuilder()
         .setColor("Red")
