@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, Collection, Events, Partials } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, Events, Partials, REST, Routes } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
 
@@ -38,9 +38,38 @@ for (const file of commandFiles) {
 	}
 }
 
+// Function to deploy commands
+async function deployCommands() {
+	try {
+		console.log('Started refreshing application (/) commands.');
+
+		const commands = [];
+		for (const file of commandFiles) {
+			const filePath = path.join(commandsPath, file);
+			const command = require(filePath);
+			if ('data' in command && 'execute' in command) {
+				commands.push(command.data.toJSON());
+			}
+		}
+
+		const rest = new REST().setToken(process.env.DISCORD_TOKEN);
+		const data = await rest.put(
+			Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
+			{ body: commands },
+		);
+
+		console.log(`Successfully reloaded ${data.length} application (/) commands.`);
+	} catch (error) {
+		console.error('Error deploying commands:', error);
+	}
+}
+
 // When the client is ready, run this code (only once)
-client.once(Events.ClientReady, readyClient => {
+client.once(Events.ClientReady, async readyClient => {
 	console.log(`Ready! Logged in as ${readyClient.user.tag}`);
+	
+	// Deploy commands when the bot starts
+	await deployCommands();
 });
 
 // Handle interactions
