@@ -1,6 +1,6 @@
 {
   "name": "lgu-enforcer",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "discord bot for LGU server",
   "main": "index.js",
   "scripts": {

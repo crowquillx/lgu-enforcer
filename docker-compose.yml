@@ -2,10 +2,17 @@ version: '3.8'
 
 services:
   bot:
-    build: .
+    build: 
+      context: .
+      dockerfile: Dockerfile
     container_name: discord-bot
     restart: unless-stopped
     env_file:
       - .env
     volumes:
-      - ./logs:/app/logs 
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (r) => r.statusCode === 200 ? process.exit(0) : process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3 
