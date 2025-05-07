@@ -10,20 +10,48 @@ module.exports = {
                 .setRequired(true))
         .addStringOption(option =>
             option.setName('users')
-                .setDescription('Space-separated list of user mentions or IDs')
-                .setRequired(true))
+                .setDescription('Select users to remove the role from')
+                .setRequired(true)
+                .setAutocomplete(true))
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles),
+
+    async autocomplete(interaction) {
+        const focusedValue = interaction.options.getFocused();
+        const role = interaction.options.getRole('role');
+        
+        if (!role) {
+            return interaction.respond([]);
+        }
+
+        // Get all members with the role
+        const membersWithRole = interaction.guild.members.cache.filter(member => 
+            member.roles.cache.has(role.id)
+        );
+
+        // Filter based on user input
+        const filtered = membersWithRole.filter(member => 
+            member.user.username.toLowerCase().includes(focusedValue.toLowerCase()) ||
+            member.user.tag.toLowerCase().includes(focusedValue.toLowerCase())
+        );
+
+        // Format the choices
+        const choices = filtered.map(member => ({
+            name: member.user.tag,
+            value: member.id
+        })).slice(0, 25); // Discord has a limit of 25 choices
+
+        await interaction.respond(choices);
+    },
 
     async execute(interaction) {
         // Defer the reply since this might take some time
         await interaction.deferReply();
 
         const role = interaction.options.getRole('role');
-        const usersInput = interaction.options.getString('users');
-        const userIds = usersInput.match(/\d+/g) || [];
+        const userIds = interaction.options.getString('users').split(',').map(id => id.trim());
 
         if (userIds.length === 0) {
-            return interaction.editReply('No valid users provided. Please provide user mentions or IDs.');
+            return interaction.editReply('No valid users provided. Please select users from the list.');
         }
 
         const results = {
