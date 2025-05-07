@@ -56,6 +56,7 @@ module.exports = {
         }
 
         const results = { success: [], failed: [] };
+        const mentions = [];
         for (const userId of userIds) {
             try {
                 const member = await interaction.guild.members.fetch(userId);
@@ -65,6 +66,7 @@ module.exports = {
                 }
                 await member.roles.remove(guildRole);
                 results.success.push(member.user.tag);
+                mentions.push(`<@${member.id}>`);
             } catch (error) {
                 results.failed.push(`User ID: ${userId} (${error.message})`);
             }
@@ -79,6 +81,19 @@ module.exports = {
         }
 
         await interaction.update({ content: response, components: [] });
+
+        // Post welcome message in the general channel if there are successful users
+        if (results.success.length > 0 && process.env.GENERAL_CHANNEL_ID) {
+            const generalChannel = interaction.guild.channels.cache.get(process.env.GENERAL_CHANNEL_ID);
+            if (generalChannel) {
+                const welcomeMsg = (process.env.WELCOME_MESSAGE || 'Welcome to the server, {users}!').replace('{users}', mentions.join(' '));
+                const imageUrl = process.env.WELCOME_IMAGE_URL;
+                await generalChannel.send({
+                    content: welcomeMsg,
+                    files: imageUrl ? [imageUrl] : undefined
+                });
+            }
+        }
         return true;
     },
 }; 

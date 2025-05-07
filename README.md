@@ -1,15 +1,3 @@
-# Discord Bot with Modular Command System
-
-A modern Discord bot built with discord.js v14, featuring a modular command system and slash commands.
-
-## Features
-
-- Modern discord.js v14 implementation
-- Modular command system
-- Slash command support
-- Environment-based configuration
-- Permission-based command access
-
 ## Setup
 
 1. Clone the repository
@@ -22,14 +10,27 @@ A modern Discord bot built with discord.js v14, featuring a modular command syst
    DISCORD_TOKEN=your_bot_token_here
    CLIENT_ID=your_client_id_here
    GUILD_ID=your_guild_id_here
+   GENERAL_CHANNEL_ID=your_general_channel_id_here
+   WELCOME_MESSAGE=Welcome to the server, {users}!
+   WELCOME_IMAGE_URL=https://example.com/welcome-image.png
    ```
-4. Register the slash commands:
-   ```bash
-   node deploy-commands.js
-   ```
-5. Start the bot:
+   - `{users}` in `WELCOME_MESSAGE` will be replaced with mentions of the selected users.
+4. Start the bot:
    ```bash
    node index.js
+   ```
+
+## Docker Usage
+
+You can run the bot using Docker and Docker Compose:
+
+1. Build and start the bot:
+   ```bash
+   docker-compose up -d --build
+   ```
+2. To stop the bot:
+   ```bash
+   docker-compose down
    ```
 
 ## Adding New Commands
@@ -44,30 +45,42 @@ To add a new command:
    module.exports = {
        data: new SlashCommandBuilder()
            .setName('commandname')
-           .setDescription('Command description')
-           // Add options here
-           .addStringOption(option =>
-               option.setName('optionname')
-                   .setDescription('Option description')
-                   .setRequired(true)),
-       
+           .setDescription('Command description'),
        async execute(interaction) {
            // Command logic here
            await interaction.reply('Response');
        },
    };
    ```
-3. Run `node deploy-commands.js` to register the new command
+3. The bot will automatically deploy commands on startup.
 
 ## Available Commands
 
-### allowed
-Removes a specified role from multiple users.
+### /allowed
+Removes a specified role from multiple users and posts a welcome message in your general channel.
 
-Usage: `/allowed <role> <users>`
 - Requires "Manage Roles" permission
-- Role: Mention or ID of the role to remove
-- Users: Space-separated list of user mentions or IDs
+- Usage: `/allowed role:<role>`
+- After running the command, a select menu will appear to choose users in the current channel.
+- After role removal, a welcome message (with image) is posted in the channel specified by `GENERAL_CHANNEL_ID`.
+- The message and image are customizable via `.env`.
+
+### /unworthy
+Kicks selected users from the server and sends them a rejection message.
+
+- Requires "Kick Members" permission
+- Usage: `/unworthy reason:<optional_reason>`
+- After running the command, a select menu will appear to choose users in the current channel.
+- Selected users will be kicked and sent a DM with the rejection reason (if possible).
+
+## Environment Variables
+
+- `DISCORD_TOKEN`: Your Discord bot token
+- `CLIENT_ID`: Your bot's client ID
+- `GUILD_ID`: The server (guild) ID for command registration
+- `GENERAL_CHANNEL_ID`: Channel ID where welcome messages are posted
+- `WELCOME_MESSAGE`: Welcome message template (use `{users}` for mentions)
+- `WELCOME_IMAGE_URL`: Image URL to include in the welcome message
 
 ## License
 
