@@ -25,7 +25,6 @@ WORKDIR /app
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/commands ./commands
 COPY --from=builder /app/index.js .
-COPY --from=builder /app/deploy-commands.js .
 
 # Create a non-root user
 RUN addgroup -S bot && adduser -S bot -G bot
