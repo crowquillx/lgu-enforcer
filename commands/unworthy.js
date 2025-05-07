@@ -1,46 +1,63 @@
-const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits, ActionRowBuilder, StringSelectMenuBuilder } = require('discord.js');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('unworthy')
         .setDescription('Kick users and send them a rejection message')
         .addStringOption(option =>
-            option.setName('users')
-                .setDescription('Space-separated list of user mentions or IDs')
-                .setRequired(true))
-        .addStringOption(option =>
             option.setName('reason')
                 .setDescription('Reason for rejection (optional)'))
         .setDefaultMemberPermissions(PermissionFlagsBits.KickMembers),
 
     async execute(interaction) {
-        // Defer the reply since this might take some time
-        await interaction.deferReply({ ephemeral: true });
-
-        const usersInput = interaction.options.getString('users');
-        const userIds = usersInput.match(/\d+/g) || [];
         const reason = interaction.options.getString('reason') || 
             `Sorry, you currently don't seem like a great fit for ${interaction.guild.name}.`;
+        const channel = interaction.channel;
+        const members = channel.members.filter(m => !m.user.bot);
 
-        if (userIds.length === 0) {
-            return interaction.editReply('No valid users provided. Please provide user mentions or IDs.');
+        if (members.size === 0) {
+            return interaction.reply({ content: 'No users found in this channel.', ephemeral: true });
         }
 
-        const results = {
-            success: [],
-            failed: []
-        };
+        // Build select menu options (max 25 due to Discord API limit)
+        const options = members.map(member => ({
+            label: member.displayName,
+            description: member.user.tag,
+            value: member.id
+        })).slice(0, 25);
 
-        // Process each user
+        const selectMenu = new StringSelectMenuBuilder()
+            .setCustomId('unworthy-select-users')
+            .setPlaceholder('Select users to kick')
+            .setMinValues(1)
+            .setMaxValues(options.length)
+            .addOptions(options);
+
+        const row = new ActionRowBuilder().addComponents(selectMenu);
+
+        await interaction.reply({
+            content: `Select users to kick from the server.\nReason: ${reason}`,
+            components: [row],
+            ephemeral: true
+        });
+    },
+
+    async handleComponent(interaction) {
+        if (interaction.customId !== 'unworthy-select-users') return false;
+
+        // Extract reason from the message content if possible
+        const reasonMatch = interaction.message.content.match(/Reason: (.*)$/);
+        const reason = reasonMatch ? reasonMatch[1] : `Sorry, you currently don't seem like a great fit for ${interaction.guild.name}.`;
+        const userIds = interaction.values;
+
+        const results = { success: [], failed: [] };
         for (const userId of userIds) {
             try {
                 const member = await interaction.guild.members.fetch(userId);
-                
                 if (!member.kickable) {
                     results.failed.push(`${member.user.tag} (cannot be kicked - bot lacks permissions or user has higher role)`);
                     continue;
                 }
-
                 // Try to send DM first
                 try {
                     const dmEmbed = new EmbedBuilder()
@@ -48,14 +65,11 @@ module.exports = {
                         .setTitle('Application Rejected')
                         .setDescription(`You have been removed from **${interaction.guild.name}**\n\n**Reason:** ${reason}`)
                         .setTimestamp();
-
                     await member.send({ embeds: [dmEmbed] });
                 } catch (dmError) {
                     // Continue even if DM fails
                     console.log(`Could not send DM to ${member.user.tag}`);
                 }
-
-                // Kick the user
                 await member.kick(reason);
                 results.success.push(member.user.tag);
             } catch (error) {
@@ -76,7 +90,6 @@ module.exports = {
                 value: results.success.map(user => `- ${user}`).join('\n')
             });
         }
-
         if (results.failed.length > 0) {
             responseEmbed.addFields({
                 name: '❌ Failed to Kick',
@@ -84,6 +97,7 @@ module.exports = {
             });
         }
 
-        await interaction.editReply({ embeds: [responseEmbed] });
-    }
+        await interaction.update({ embeds: [responseEmbed], components: [] });
+        return true;
+    },
 }; 

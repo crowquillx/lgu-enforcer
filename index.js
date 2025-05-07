@@ -91,6 +91,19 @@ client.on(Events.InteractionCreate, async interaction => {
 		return;
 	}
 
+	// Handle select menu interactions for commands
+	if (interaction.isStringSelectMenu()) {
+		// Try to find a command that can handle this component
+		for (const [, command] of client.commands) {
+			if (typeof command.handleComponent === 'function') {
+				const handled = await command.handleComponent(interaction);
+				if (handled) return;
+			}
+		}
+		console.error('No command handled the select menu interaction.');
+		return;
+	}
+
 	if (!interaction.isChatInputCommand()) return;
 
 	const command = interaction.client.commands.get(interaction.commandName);
