@@ -23,24 +23,36 @@ module.exports = {
             return interaction.respond([]);
         }
 
-        // Get all members with the role
-        const membersWithRole = interaction.guild.members.cache.filter(member => 
-            member.roles.cache.has(role.id)
-        );
+        try {
+            // Fetch all members if they're not cached
+            if (!interaction.guild.members.cache.size) {
+                await interaction.guild.members.fetch();
+            }
 
-        // Filter based on user input
-        const filtered = membersWithRole.filter(member => 
-            member.user.username.toLowerCase().includes(focusedValue.toLowerCase()) ||
-            member.user.tag.toLowerCase().includes(focusedValue.toLowerCase())
-        );
+            // Get all members with the role
+            const membersWithRole = interaction.guild.members.cache.filter(member => 
+                member.roles.cache.has(role.id)
+            );
 
-        // Format the choices
-        const choices = filtered.map(member => ({
-            name: member.user.tag,
-            value: member.id
-        })).slice(0, 25); // Discord has a limit of 25 choices
+            // Filter based on user input
+            const filtered = membersWithRole.filter(member => {
+                const searchTerm = focusedValue.toLowerCase();
+                return member.user.username.toLowerCase().includes(searchTerm) ||
+                       member.user.tag.toLowerCase().includes(searchTerm) ||
+                       member.displayName.toLowerCase().includes(searchTerm);
+            });
 
-        await interaction.respond(choices);
+            // Format the choices
+            const choices = filtered.map(member => ({
+                name: `${member.displayName} (${member.user.tag})`,
+                value: member.id
+            })).slice(0, 25); // Discord has a limit of 25 choices
+
+            await interaction.respond(choices);
+        } catch (error) {
+            console.error('Error in autocomplete:', error);
+            await interaction.respond([]);
+        }
     },
 
     async execute(interaction) {
