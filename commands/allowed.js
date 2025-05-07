@@ -17,30 +17,20 @@ module.exports = {
 
     async autocomplete(interaction) {
         const focusedValue = interaction.options.getFocused();
-        const role = interaction.options.getRole('role');
-        
-        if (!role) {
-            return interaction.respond([]);
-        }
-
         try {
             // Get the current channel
             const channel = interaction.channel;
-            
             // Get members from the current channel
             const members = channel.members;
-            
-            // Filter members who have the role
-            const membersWithRole = members.filter(member => 
-                member.roles.cache.has(role.id)
-            );
 
-            // Filter based on user input
-            const filtered = membersWithRole.filter(member => {
+            // Filter based on user input (username, tag, or display name)
+            const filtered = members.filter(member => {
                 const searchTerm = focusedValue.toLowerCase();
-                return member.user.username.toLowerCase().includes(searchTerm) ||
-                       member.user.tag.toLowerCase().includes(searchTerm) ||
-                       member.displayName.toLowerCase().includes(searchTerm);
+                return (
+                    member.user.username.toLowerCase().includes(searchTerm) ||
+                    member.user.tag.toLowerCase().includes(searchTerm) ||
+                    member.displayName.toLowerCase().includes(searchTerm)
+                );
             });
 
             // Format the choices
