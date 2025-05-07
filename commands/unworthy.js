@@ -1,39 +1,89 @@
-const { SlashCommandBuilder, EmbedBuilder, PermissionsBitField } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
 
 module.exports = {
-	data: new SlashCommandBuilder()
-		.setName('unworthy')
-		.setDescription('kicks and sends a message saying that they don\'t belong')
-        .addUserOption(option => option.setName('target').setDescription('who must go?').setRequired(true))
-        .addStringOption(option => option.setName('reason').setDescription('reason for kicking?')),
-	async execute(interaction, client) {
-		const kickUser = interaction.options.getUser('target');
-        const kickMember = await interaction.guild.members.fetch(kickUser.id);
-        const channel = interaction.channel;
+    data: new SlashCommandBuilder()
+        .setName('unworthy')
+        .setDescription('Kick users and send them a rejection message')
+        .addStringOption(option =>
+            option.setName('users')
+                .setDescription('Space-separated list of user mentions or IDs')
+                .setRequired(true))
+        .addStringOption(option =>
+            option.setName('reason')
+                .setDescription('Reason for rejection (optional)'))
+        .setDefaultMemberPermissions(PermissionFlagsBits.KickMembers),
 
-        if (!interaction.member.permissions.has(PermissionsBitField.Flags.KickMembers)) return await interaction.reply({content: "kick members perm is required for this command. dummy.", ephemeral: true});
-        if (!kickMember) return await interaction.reply({content: 'that user is not in the server.', ephemeral: true});
-        if (!kickMember.kickable) return await interaction.reply({content: "this user is too powerful for me to kick", ephemeral: true})
+    async execute(interaction) {
+        // Defer the reply since this might take some time
+        await interaction.deferReply({ ephemeral: true });
 
-        let reason = interaction.options.getString('reason');
-        if (!reason) reason = `Sorry, you currently don't seem like a great fit for ${interaction.guild.name} .`
+        const usersInput = interaction.options.getString('users');
+        const userIds = usersInput.match(/\d+/g) || [];
+        const reason = interaction.options.getString('reason') || 
+            `Sorry, you currently don't seem like a great fit for ${interaction.guild.name}.`;
 
-        const dmEmbed = new EmbedBuilder()
-        .setColor("Red")
-        .setDescription(`:exclamation: You have been removed from **${interaction.guild.name} | ${reason}`)
+        if (userIds.length === 0) {
+            return interaction.editReply('No valid users provided. Please provide user mentions or IDs.');
+        }
 
-        const embed = new EmbedBuilder()
-        .setColor("Aqua")
-        .setDescription(`white_check_mark: ${kickUser.tag} has been disposed of | ${reason}`)
+        const results = {
+            success: [],
+            failed: []
+        };
 
-        await kickMember.send({ embeds: [dmEmbed] }).catch(err => {
-            return;
-        });
+        // Process each user
+        for (const userId of userIds) {
+            try {
+                const member = await interaction.guild.members.fetch(userId);
+                
+                if (!member.kickable) {
+                    results.failed.push(`${member.user.tag} (cannot be kicked - bot lacks permissions or user has higher role)`);
+                    continue;
+                }
 
-        await kickMember.kick({ reason: reason}).catch (err => {
-            interaction.reply({content: "there was an error.", ephemeral: true})
-        });
+                // Try to send DM first
+                try {
+                    const dmEmbed = new EmbedBuilder()
+                        .setColor('#FF0000')
+                        .setTitle('Application Rejected')
+                        .setDescription(`You have been removed from **${interaction.guild.name}**\n\n**Reason:** ${reason}`)
+                        .setTimestamp();
 
-        await interaction.reply({embeds: [embed], ephemeral:true});
-	},
-};
+                    await member.send({ embeds: [dmEmbed] });
+                } catch (dmError) {
+                    // Continue even if DM fails
+                    console.log(`Could not send DM to ${member.user.tag}`);
+                }
+
+                // Kick the user
+                await member.kick(reason);
+                results.success.push(member.user.tag);
+            } catch (error) {
+                results.failed.push(`User ID: ${userId} (${error.message})`);
+            }
+        }
+
+        // Create response message
+        const responseEmbed = new EmbedBuilder()
+            .setColor('#00FF00')
+            .setTitle('Kick Operation Summary')
+            .setDescription(`Results for kicking users from ${interaction.guild.name}`)
+            .setTimestamp();
+
+        if (results.success.length > 0) {
+            responseEmbed.addFields({
+                name: '✅ Successfully Kicked',
+                value: results.success.map(user => `- ${user}`).join('\n')
+            });
+        }
+
+        if (results.failed.length > 0) {
+            responseEmbed.addFields({
+                name: '❌ Failed to Kick',
+                value: results.failed.map(user => `- ${user}`).join('\n')
+            });
+        }
+
+        await interaction.editReply({ embeds: [responseEmbed] });
+    }
+}; 
