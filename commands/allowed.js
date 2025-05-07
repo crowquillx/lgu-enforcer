@@ -24,13 +24,14 @@ module.exports = {
         }
 
         try {
-            // Fetch all members if they're not cached
-            if (!interaction.guild.members.cache.size) {
-                await interaction.guild.members.fetch();
-            }
-
-            // Get all members with the role
-            const membersWithRole = interaction.guild.members.cache.filter(member => 
+            // Get the current channel
+            const channel = interaction.channel;
+            
+            // Get members from the current channel
+            const members = channel.members;
+            
+            // Filter members who have the role
+            const membersWithRole = members.filter(member => 
                 member.roles.cache.has(role.id)
             );
 
