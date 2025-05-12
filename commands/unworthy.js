@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits, ActionRowBuilder, StringSelectMenuBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits, ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -120,53 +120,55 @@ module.exports = {
             const userIds = interaction.values;
 
             const results = { success: [], failed: [] };
+
             for (const userId of userIds) {
-            try {
-                const member = await interaction.guild.members.fetch(userId);
-                if (!member.kickable) {
-                    results.failed.push(`${member.user.tag} (cannot be kicked - bot lacks permissions or user has higher role)`);
-                    continue;
-                }
-                // Try to send DM first
                 try {
-                    const dmEmbed = new EmbedBuilder()
-                        .setColor('#FF0000')
-                        .setTitle('Application Rejected')
-                        .setDescription(`You have been removed from **${interaction.guild.name}**\n\n**Reason:** ${reason}`)
-                        .setTimestamp();
-                    await member.send({ embeds: [dmEmbed] });
-                } catch (dmError) {
-                    // Continue even if DM fails
-                    console.log(`Could not send DM to ${member.user.tag}`);
+                    const member = await interaction.guild.members.fetch(userId);
+                    if (!member.kickable) {
+                        results.failed.push(`${member.user.tag} (cannot be kicked - bot lacks permissions or user has higher role)`);
+                        continue;
+                    }
+                    // Try to send DM first
+                    try {
+                        const dmEmbed = new EmbedBuilder()
+                            .setColor('#FF0000')
+                            .setTitle('Application Rejected')
+                            .setDescription(`You have been removed from **${interaction.guild.name}**\n\n**Reason:** ${reason}`)
+                            .setTimestamp();
+                        await member.send({ embeds: [dmEmbed] });
+                    } catch (dmError) {
+                        // Continue even if DM fails
+                        console.log(`Could not send DM to ${member.user.tag}`);
+                    }
+                    await member.kick(reason);
+                    results.success.push(member.user.tag);
+                } catch (error) {
+                    results.failed.push(`User ID: ${userId} (${error.message})`);
                 }
-                await member.kick(reason);
-                results.success.push(member.user.tag);
-            } catch (error) {
-                results.failed.push(`User ID: ${userId} (${error.message})`);
             }
-        }
 
-        // Create response message
-        const responseEmbed = new EmbedBuilder()
-            .setColor('#00FF00')
-            .setTitle('Kick Operation Summary')
-            .setDescription(`Results for kicking users from ${interaction.guild.name}`)
-            .setTimestamp();
+            // Create response message
+            const responseEmbed = new EmbedBuilder()
+                .setColor('#00FF00')
+                .setTitle('Kick Operation Summary')
+                .setDescription(`Results for kicking users from ${interaction.guild.name}`)
+                .setTimestamp();
 
-        if (results.success.length > 0) {
-            responseEmbed.addFields({
-                name: '✅ Successfully Kicked',
-                value: results.success.map(user => `- ${user}`).join('\n')
-            });
-        }
-        if (results.failed.length > 0) {
-            responseEmbed.addFields({
-                name: '❌ Failed to Kick',
-                value: results.failed.map(user => `- ${user}`).join('\n')
-            });
-        }
+            if (results.success.length > 0) {
+                responseEmbed.addFields({
+                    name: '✅ Successfully Kicked',
+                    value: results.success.map(user => `- ${user}`).join('\n')
+                });
+            }
+            if (results.failed.length > 0) {
+                responseEmbed.addFields({
+                    name: '❌ Failed to Kick',
+                    value: results.failed.map(user => `- ${user}`).join('\n')
+                });
+            }
 
-        await interaction.update({ embeds: [responseEmbed], components: [] });
-        return true;
+            await interaction.update({ embeds: [responseEmbed], components: [] });
+            return true;
+        }
     }
 };
