@@ -13,8 +13,10 @@
    GENERAL_CHANNEL_ID=your_general_channel_id_here
    WELCOME_MESSAGE=Welcome to the server, {users}!
    WELCOME_IMAGE_URL=https://example.com/welcome-image.png
+   DEFAULT_ROLE_ID=your_default_role_id_here
    ```
    - `{users}` in `WELCOME_MESSAGE` will be replaced with mentions of the selected users.
+   - `DEFAULT_ROLE_ID` is the ID of the role that will be automatically assigned to new members when they join the server.
 4. Start the bot:
    ```bash
    node index.js
@@ -81,6 +83,7 @@ Kicks selected users from the server and sends them a rejection message.
 - `GENERAL_CHANNEL_ID`: Channel ID where welcome messages are posted
 - `WELCOME_MESSAGE`: Welcome message template (use `{users}` for mentions)
 - `WELCOME_IMAGE_URL`: Image URL to include in the welcome message
+- `DEFAULT_ROLE_ID`: ID of the role to automatically assign to new members
 
 ## License
 
