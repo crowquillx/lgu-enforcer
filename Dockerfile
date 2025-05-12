@@ -24,6 +24,7 @@ WORKDIR /app
 # Copy built node modules and source code
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/commands ./commands
+COPY --from=builder /app/events ./events
 COPY --from=builder /app/index.js .
 
 # Create a non-root user
