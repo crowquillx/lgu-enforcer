@@ -121,12 +121,6 @@ module.exports = {
 
             const results = { success: [], failed: [] };
             for (const userId of userIds) {
-        const reasonMatch = interaction.message.content.match(/Reason: (.*)$/);
-        const reason = reasonMatch ? reasonMatch[1] : `Sorry, you currently don't seem like a great fit for ${interaction.guild.name}.`;
-        const userIds = interaction.values;
-
-        const results = { success: [], failed: [] };
-        for (const userId of userIds) {
             try {
                 const member = await interaction.guild.members.fetch(userId);
                 if (!member.kickable) {
@@ -174,5 +168,5 @@ module.exports = {
 
         await interaction.update({ embeds: [responseEmbed], components: [] });
         return true;
-    },
-}; 
+    }
+};
