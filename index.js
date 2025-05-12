@@ -39,6 +39,29 @@ for (const file of commandFiles) {
 	}
 }
 
+// Load and register event handlers
+const eventsPath = path.join(__dirname, 'events');
+const eventFiles = fs.readdirSync(eventsPath).filter(file => file.endsWith('.js'));
+for (const file of eventFiles) {
+    const filePath = path.join(eventsPath, file);
+    const event = require(filePath);
+    if (!event || !event.name || typeof event.execute !== 'function') {
+        console.log(`[WARNING] The event at ${filePath} is missing a required "name" or "execute" property.`);
+        continue;
+    }
+    if (event.once) {
+        client.once(event.name, (...args) => {
+            console.log(`[EVENT] (once) ${event.name} triggered with args:`, args.map(a => a?.user?.tag || a?.id || typeof a));
+            event.execute(...args);
+        });
+    } else {
+        client.on(event.name, (...args) => {
+            console.log(`[EVENT] ${event.name} triggered with args:`, args.map(a => a?.user?.tag || a?.id || typeof a));
+            event.execute(...args);
+        });
+    }
+}
+
 // Function to deploy commands
 async function deployCommands() {
 	try {
