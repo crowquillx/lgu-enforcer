@@ -20,10 +20,12 @@ module.exports = {
         if (!channel) {
             return interaction.reply({ content: 'Target channel not found.', ephemeral: true });
         }
-        const members = channel.members.filter(m => !m.user.bot);
+        // For text channels: get all non-bot members who can view this channel
+        const members = interaction.guild.members.cache.filter(m => !m.user.bot && channel.permissionsFor(m).has('ViewChannel'));
 
         if (members.size === 0) {
-            return interaction.reply({ content: 'No users found in this channel.', ephemeral: true });
+            await interaction.reply({ content: 'No users found in this channel.', flags: 64 });
+            return;
         }
 
         // Build select menu options (max 25 due to Discord API limit)
