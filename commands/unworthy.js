@@ -10,6 +10,7 @@ module.exports = {
         .setDefaultMemberPermissions(PermissionFlagsBits.KickMembers),
 
     async execute(interaction) {
+        require('dotenv').config();
         const reason = interaction.options.getString('reason') || 
             `Sorry, you currently don't seem like a great fit for ${interaction.guild.name}.`;
         // Fetch all members to ensure the cache is populated
@@ -29,33 +30,97 @@ module.exports = {
             return;
         }
 
-        // Build select menu options (max 25 due to Discord API limit)
-        const options = members.map(member => ({
+        // Paging logic
+        const membersArr = Array.from(members.values());
+        const pageSize = 25;
+        const page = 1;
+        const totalPages = Math.ceil(membersArr.length / pageSize);
+        const pagedMembers = membersArr.slice((page - 1) * pageSize, page * pageSize);
+
+        const options = pagedMembers.map(member => ({
             label: member.displayName,
             description: member.user.tag,
             value: member.id
-        })).slice(0, 25);
+        }));
 
         const selectMenu = new StringSelectMenuBuilder()
-            .setCustomId('unworthy-select-users')
+            .setCustomId(`unworthy-select-users-page-${page}`)
             .setPlaceholder('Select users to kick')
             .setMinValues(1)
             .setMaxValues(options.length)
             .addOptions(options);
 
         const row = new ActionRowBuilder().addComponents(selectMenu);
+        const buttonRow = new ActionRowBuilder();
+        if (totalPages > 1) {
+            if (page > 1) buttonRow.addComponents(new ButtonBuilder().setCustomId(`unworthy-prev-page-${page}`).setLabel('Previous').setStyle(ButtonStyle.Primary));
+            if (page < totalPages) buttonRow.addComponents(new ButtonBuilder().setCustomId(`unworthy-next-page-${page}`).setLabel('Next').setStyle(ButtonStyle.Primary));
+        }
+        const components = [row];
+        if (buttonRow.components.length) components.push(buttonRow);
 
         await interaction.reply({
-            content: `Select users to kick from the server.\nReason: ${reason}`,
-            components: [row],
-            ephemeral: true
+            content: `Select users to kick from the server.\nReason: ${reason} (Page ${page}/${totalPages})`,
+            components,
+            flags: 64
         });
+        return;
     },
 
     async handleComponent(interaction) {
-        if (interaction.customId !== 'unworthy-select-users') return false;
+        // Paging handler
+        if (interaction.customId.startsWith('unworthy-prev-page-') || interaction.customId.startsWith('unworthy-next-page-')) {
+            const isPrev = interaction.customId.startsWith('unworthy-prev-page-');
+            const currentPage = parseInt(interaction.customId.split('-').pop(), 10);
+            const newPage = isPrev ? currentPage - 1 : currentPage + 1;
+            const reasonMatch = interaction.message.content.match(/Reason: (.*?)(?: \(Page|$)/);
+            const reason = reasonMatch ? reasonMatch[1] : `Sorry, you currently don't seem like a great fit for ${interaction.guild.name}.`;
+            await interaction.guild.members.fetch();
+            const TARGET_CHANNEL_ID = process.env.TARGET_CHANNEL_ID;
+            const channel = TARGET_CHANNEL_ID ? interaction.guild.channels.cache.get(TARGET_CHANNEL_ID) : interaction.channel;
+            if (!channel) {
+                await interaction.update({ content: 'Target channel not found.', components: [], flags: 64 });
+                return true;
+            }
+            const members = interaction.guild.members.cache.filter(m => !m.user.bot && channel.permissionsFor(m).has('ViewChannel'));
+            const membersArr = Array.from(members.values());
+            const pageSize = 25;
+            const totalPages = Math.ceil(membersArr.length / pageSize);
+            const pagedMembers = membersArr.slice((newPage - 1) * pageSize, newPage * pageSize);
+            const options = pagedMembers.map(member => ({
+                label: member.displayName,
+                description: member.user.tag,
+                value: member.id
+            }));
+            const selectMenu = new StringSelectMenuBuilder()
+                .setCustomId(`unworthy-select-users-page-${newPage}`)
+                .setPlaceholder('Select users to kick')
+                .setMinValues(1)
+                .setMaxValues(options.length)
+                .addOptions(options);
+            const row = new ActionRowBuilder().addComponents(selectMenu);
+            const buttonRow = new ActionRowBuilder();
+            if (totalPages > 1) {
+                if (newPage > 1) buttonRow.addComponents(new ButtonBuilder().setCustomId(`unworthy-prev-page-${newPage}`).setLabel('Previous').setStyle(ButtonStyle.Primary));
+                if (newPage < totalPages) buttonRow.addComponents(new ButtonBuilder().setCustomId(`unworthy-next-page-${newPage}`).setLabel('Next').setStyle(ButtonStyle.Primary));
+            }
+            const components = [row];
+            if (buttonRow.components.length) components.push(buttonRow);
+            await interaction.update({
+                content: `Select users to kick from the server.\nReason: ${reason} (Page ${newPage}/${totalPages})`,
+                components,
+                flags: 64
+            });
+            return true;
+        }
+        // User select handler
+        if (interaction.customId.startsWith('unworthy-select-users-page-')) {
+            const reasonMatch = interaction.message.content.match(/Reason: (.*?)(?: \(Page|$)/);
+            const reason = reasonMatch ? reasonMatch[1] : `Sorry, you currently don't seem like a great fit for ${interaction.guild.name}.`;
+            const userIds = interaction.values;
 
-        // Extract reason from the message content if possible
+            const results = { success: [], failed: [] };
+            for (const userId of userIds) {
         const reasonMatch = interaction.message.content.match(/Reason: (.*)$/);
         const reason = reasonMatch ? reasonMatch[1] : `Sorry, you currently don't seem like a great fit for ${interaction.guild.name}.`;
         const userIds = interaction.values;
