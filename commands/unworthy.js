@@ -12,7 +12,14 @@ module.exports = {
     async execute(interaction) {
         const reason = interaction.options.getString('reason') || 
             `Sorry, you currently don't seem like a great fit for ${interaction.guild.name}.`;
-        const channel = interaction.channel;
+        // Fetch all members to ensure the cache is populated
+        await interaction.guild.members.fetch();
+        // Use the target channel from env if set, otherwise use the current channel
+        const TARGET_CHANNEL_ID = process.env.TARGET_CHANNEL_ID;
+        const channel = TARGET_CHANNEL_ID ? interaction.guild.channels.cache.get(TARGET_CHANNEL_ID) : interaction.channel;
+        if (!channel) {
+            return interaction.reply({ content: 'Target channel not found.', ephemeral: true });
+        }
         const members = channel.members.filter(m => !m.user.bot);
 
         if (members.size === 0) {
