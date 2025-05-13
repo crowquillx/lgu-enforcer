@@ -68,18 +68,50 @@ module.exports = {
     },
 
     async handleComponent(interaction) {
-        // Paging handler
-        if (interaction.customId.startsWith('unworthy-prev-page-') || interaction.customId.startsWith('unworthy-next-page-')) {
-            const isPrev = interaction.customId.startsWith('unworthy-prev-page-');
-            const currentPage = parseInt(interaction.customId.split('-').pop(), 10);
-            const newPage = isPrev ? currentPage - 1 : currentPage + 1;
-            const reasonMatch = interaction.message.content.match(/Reason: (.*?)(?: \(Page|$)/);
-            const reason = reasonMatch ? reasonMatch[1] : `Sorry, you currently don't seem like a great fit for ${interaction.guild.name}.`;
-            await interaction.guild.members.fetch();
-            const TARGET_CHANNEL_ID = process.env.TARGET_CHANNEL_ID;
-            const channel = TARGET_CHANNEL_ID ? interaction.guild.channels.cache.get(TARGET_CHANNEL_ID) : interaction.channel;
-            if (!channel) {
-                await interaction.update({ content: 'Target channel not found.', components: [], flags: 64 });
+        try {
+            // Paging handler
+            if (interaction.customId.startsWith('unworthy-prev-page-') || interaction.customId.startsWith('unworthy-next-page-')) {
+                const isPrev = interaction.customId.startsWith('unworthy-prev-page-');
+                const currentPage = parseInt(interaction.customId.split('-').pop(), 10);
+                const newPage = isPrev ? currentPage - 1 : currentPage + 1;
+                const reasonMatch = interaction.message.content.match(/Reason: (.*?)(?: \(Page|$)/);
+                const reason = reasonMatch && reasonMatch[1] ? reasonMatch[1] : 'No reason found.';
+                await interaction.guild.members.fetch();
+                const TARGET_CHANNEL_ID = process.env.TARGET_CHANNEL_ID;
+                const channel = TARGET_CHANNEL_ID ? interaction.guild.channels.cache.get(TARGET_CHANNEL_ID) : interaction.channel;
+                if (!channel) {
+                    await interaction.update({ content: 'Target channel not found.', components: [], flags: 64 });
+                    return true;
+                }
+                const members = interaction.guild.members.cache.filter(m => !m.user.bot && channel.permissionsFor(m).has('ViewChannel'));
+                const membersArr = Array.from(members.values());
+                const pageSize = 25;
+                const totalPages = Math.ceil(membersArr.length / pageSize);
+                const pagedMembers = membersArr.slice((newPage - 1) * pageSize, newPage * pageSize);
+                const options = pagedMembers.map(member => ({
+                    label: member.displayName,
+                    description: member.user.tag,
+                    value: member.id
+                }));
+                const selectMenu = new StringSelectMenuBuilder()
+                    .setCustomId(`unworthy-select-users-page-${newPage}`)
+                    .setPlaceholder('Select users to kick')
+                    .setMinValues(1)
+                    .setMaxValues(options.length)
+                    .addOptions(options);
+                const row = new ActionRowBuilder().addComponents(selectMenu);
+                const buttonRow = new ActionRowBuilder();
+                if (totalPages > 1) {
+                    if (newPage > 1) buttonRow.addComponents(new ButtonBuilder().setCustomId(`unworthy-prev-page-${newPage}`).setLabel('Previous').setStyle(ButtonStyle.Primary));
+                    if (newPage < totalPages) buttonRow.addComponents(new ButtonBuilder().setCustomId(`unworthy-next-page-${newPage}`).setLabel('Next').setStyle(ButtonStyle.Primary));
+                }
+                const components = [row];
+                if (buttonRow.components.length) components.push(buttonRow);
+                await interaction.update({
+                    content: `Select users to kick from the server.\nReason: ${reason} (Page ${newPage}/${totalPages})`,
+                    components,
+                    flags: 64
+                });
                 return true;
             }
             const members = interaction.guild.members.cache.filter(m => !m.user.bot && channel.permissionsFor(m).has('ViewChannel'));

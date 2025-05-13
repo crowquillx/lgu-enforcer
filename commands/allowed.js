@@ -85,27 +85,12 @@ const options = membersArray.slice((currentPage - 1) * pageSize, currentPage * p
     },
 
     async handleComponent(interaction) {
-        if (interaction.customId.startsWith('allowed-select-users')) {
-            const role = interaction.message.content.match(/\*\*(.+)\*\*/)[1];
-            const userIds = interaction.values;
-            const guildRole = interaction.guild.roles.cache.find(r => r.name === role);
-
-            if (!guildRole) {
-                await interaction.update({ content: 'Role not found.', components: [] });
-                return true;
-            }
-
-            const results = { success: [], failed: [] };
-            const mentions = [];
-            for (const userId of userIds) {
-                try {
-                    const member = await interaction.guild.members.fetch(userId);
-                    if (!member.roles.cache.has(guildRole.id)) {
-                        results.failed.push(`${member.user.tag} (didn't have the role)`);
-                        continue;
-                    }
-                    await member.roles.remove(guildRole);
-                    results.success.push(member.user.tag);
+        try {
+            if (interaction.customId.startsWith('allowed-select-users')) {
+                const roleMatch = interaction.message.content.match(/\*\*(.+)\*\*/);
+                if (!roleMatch) {
+                    await interaction.update({ content: 'Role not found in message.', components: [] });
+                    return true;
                     mentions.push(`<@${member.id}>`);
                 } catch (error) {
                     results.failed.push(`User ID: ${userId} (${error.message})`);
