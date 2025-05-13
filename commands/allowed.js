@@ -33,11 +33,12 @@ module.exports = {
         const currentPage = 1;
 
         const buildSelectMenu = (members, currentPage, pageSize) => {
-            const options = members.slice((currentPage - 1) * pageSize, currentPage * pageSize).map(member => ({
-                label: member.displayName,
-                description: member.user.tag,
-                value: member.id
-            }));
+            const membersArray = Array.isArray(members) ? members : Array.from(members.values());
+const options = membersArray.slice((currentPage - 1) * pageSize, currentPage * pageSize).map(member => ({
+    label: member.displayName,
+    description: member.user.tag,
+    value: member.id
+}));
 
             const selectMenu = new StringSelectMenuBuilder()
                 .setCustomId(`allowed-select-users-${currentPage}`)
