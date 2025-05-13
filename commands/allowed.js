@@ -33,7 +33,7 @@ module.exports = {
         const currentPage = 1;
 
         const buildSelectMenu = (members, currentPage, pageSize) => {
-            const membersArray = Array.isArray(members) ? members : Array.from(members.values());
+            const membersArray = Array.from(members?.values ? members.values() : members);
 const options = membersArray.slice((currentPage - 1) * pageSize, currentPage * pageSize).map(member => ({
     label: member.displayName,
     description: member.user.tag,
