@@ -34,11 +34,11 @@ module.exports = {
 
         const buildSelectMenu = (members, currentPage, pageSize) => {
             const membersArray = Array.from(members?.values ? members.values() : members);
-const options = membersArray.slice((currentPage - 1) * pageSize, currentPage * pageSize).map(member => ({
-    label: member.displayName,
-    description: member.user.tag,
-    value: member.id
-}));
+            const options = membersArray.slice((currentPage - 1) * pageSize, currentPage * pageSize).map(member => ({
+                label: member.displayName,
+                description: member.user.tag,
+                value: member.id
+            }));
 
             const selectMenu = new StringSelectMenuBuilder()
                 .setCustomId(`allowed-select-users-${currentPage}`)
@@ -91,102 +91,80 @@ const options = membersArray.slice((currentPage - 1) * pageSize, currentPage * p
                 if (!roleMatch) {
                     await interaction.update({ content: 'Role not found in message.', components: [] });
                     return true;
-                    mentions.push(`<@${member.id}>`);
-                } catch (error) {
-                    results.failed.push(`User ID: ${userId} (${error.message})`);
                 }
-            }
+                const userIds = interaction.values;
+                const guildRole = interaction.guild.roles.cache.find(r => r.name === roleMatch[1]);
+                const results = { success: [], failed: [] };
+                const mentions = [];
 
-            let response = `Role removal summary for **${guildRole.name}**:\n\n`;
-            if (results.success.length > 0) {
-                response += `✅ Successfully removed role from:\n${results.success.map(user => `- ${user}`).join('\n')}\n\n`;
-            }
-            if (results.failed.length > 0) {
-                response += `❌ Failed to remove role from:\n${results.failed.map(user => `- ${user}`).join('\n')}`;
-            }
-
-            await interaction.update({ content: response, components: [] });
-
-            // Post welcome message in the general channel if there are successful users
-            if (results.success.length > 0 && process.env.GENERAL_CHANNEL_ID) {
-                const generalChannel = interaction.guild.channels.cache.get(process.env.GENERAL_CHANNEL_ID);
-                if (generalChannel) {
-                    const welcomeMsg = (process.env.WELCOME_MESSAGE || 'Welcome to the server, {users}!').replace('{users}', mentions.join(' '));
-                    const imageUrl = process.env.WELCOME_IMAGE_URL;
-                    await generalChannel.send({
-                        content: welcomeMsg,
-                        files: imageUrl ? [imageUrl] : undefined
-                    });
+                for (const userId of userIds) {
+                    try {
+                        const member = await interaction.guild.members.fetch(userId);
+                        if (!member.roles.cache.has(guildRole.id)) {
+                            results.failed.push(`${member.user.tag} (didn't have the role)`);
+                            continue;
+                        }
+                        await member.roles.remove(guildRole);
+                        results.success.push(member.user.tag);
+                        mentions.push(`<@${member.id}>`);
+                    } catch (error) {
+                        results.failed.push(`User ID: ${userId} (${error.message})`);
+                    }
                 }
+
+                let response = `Role removal summary for **${guildRole.name}**:\n\n`;
+                if (results.success.length > 0) {
+                    response += `✅ Successfully removed role from:\n${results.success.map(user => `- ${user}`).join('\n')}\n\n`;
+                }
+                if (results.failed.length > 0) {
+                    response += `❌ Failed to remove role from:\n${results.failed.map(user => `- ${user}`).join('\n')}`;
+                }
+                await interaction.update({ content: response, components: [] });
+
+                // Post welcome message in the general channel if there are successful users
+                if (results.success.length > 0 && process.env.GENERAL_CHANNEL_ID) {
+                    const generalChannel = interaction.guild.channels.cache.get(process.env.GENERAL_CHANNEL_ID);
+                    if (generalChannel) {
+                        const welcomeMsg = (process.env.WELCOME_MESSAGE || 'Welcome to the server, {users}!').replace('{users}', mentions.join(' '));
+                        const imageUrl = process.env.WELCOME_IMAGE_URL;
+                        await generalChannel.send({
+                            content: welcomeMsg,
+                            files: imageUrl ? [imageUrl] : undefined
+                        });
+                    }
+                }
+                return true;
             }
-            return true;
-        }
 
-        if (interaction.customId === 'allowed-prev-page' || interaction.customId === 'allowed-next-page') {
-            const currentPage = interaction.message.components[0].components[0].customId.match(/allowed-select-users-(\d+)/)[1];
-            const pageSize = 25;
-            const pages = Math.ceil(interaction.guild.members.cache.size / pageSize);
+            if (interaction.customId === 'allowed-prev-page' || interaction.customId === 'allowed-next-page') {
+                const currentPage = interaction.message.components[0].components[0].customId.match(/allowed-select-users-(\d+)/)[1];
+                const pageSize = 25;
+                const pages = Math.ceil(interaction.guild.members.cache.size / pageSize);
+                
+                let newPage;
+                if (interaction.customId === 'allowed-prev-page') {
+                    newPage = Math.max(1, parseInt(currentPage) - 1);
+                } else {
+                    newPage = Math.min(pages, parseInt(currentPage) + 1);
+                }
 
-            let newPage;
-            if (interaction.customId === 'allowed-prev-page') {
-                newPage = Math.max(1, parseInt(currentPage) - 1);
-            } else {
-                newPage = Math.min(pages, parseInt(currentPage) + 1);
+                const members = interaction.guild.members.cache.filter(m => !m.user.bot);
+                const selectMenu = buildSelectMenu(members, newPage, pageSize);
+                const buttonRow = buildButtonRow(newPage, pages);
+
+                await interaction.update({
+                    content: `Select users to remove the role **${interaction.message.content.match(/\*\*(.+)\*\*/)[1]}** from:`,
+                    components: [new ActionRowBuilder().addComponents(selectMenu), buttonRow],
+                    flags: 64
+                });
+                return true;
             }
 
-            const members = interaction.guild.members.cache.filter(m => !m.user.bot);
-            const selectMenu = buildSelectMenu(members, newPage, pageSize);
-            const buttonRow = buildButtonRow(newPage, pages);
-
-            await interaction.update({
-                content: `Select users to remove the role **${interaction.message.content.match(/\*\*(.+)\*\*/)[1]}** from:`,
-                components: [new ActionRowBuilder().addComponents(selectMenu), buttonRow],
-                flags: 64
-            });
-            return true;
+            return false;
+        } catch (error) {
+            console.error(error);
+            await interaction.reply({ content: 'An error occurred while processing your request.', ephemeral: true });
+            return false;
         }
-
-        return false;
     }
 };
-
-function buildSelectMenu(members, currentPage, pageSize) {
-    const options = members.slice((currentPage - 1) * pageSize, currentPage * pageSize).map(member => ({
-        label: member.displayName,
-        description: member.user.tag,
-        value: member.id
-    }));
-
-    const selectMenu = new StringSelectMenuBuilder()
-        .setCustomId(`allowed-select-users-${currentPage}`)
-        .setPlaceholder('Select users to remove the role from')
-        .setMinValues(1)
-        .setMaxValues(options.length)
-        .addOptions(options);
-
-    return selectMenu;
-}
-
-function buildButtonRow(currentPage, pages) {
-    const row = new ActionRowBuilder();
-
-    if (currentPage > 1) {
-        row.addComponents(
-            new ButtonBuilder()
-                .setCustomId('allowed-prev-page')
-                .setLabel('Previous')
-                .setStyle(ButtonStyle.Primary)
-        );
-    }
-
-    if (currentPage < pages) {
-        row.addComponents(
-            new ButtonBuilder()
-                .setCustomId('allowed-next-page')
-                .setLabel('Next')
-                .setStyle(ButtonStyle.Primary)
-        );
-    }
-
-    return row;
-}
