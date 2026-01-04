@@ -7,6 +7,24 @@ const isRateLimitError = (error) => {
            (error.code === 50035 && error.status === 429);
 };
 
+// Helper function to safely send replies without triggering Discord's error message
+const safeReply = async (interaction, content, ephemeral, components) => {
+    try {
+        if (interaction.replied || interaction.deferred) {
+            await interaction.editReply({ content, components });
+        } else {
+            await interaction.reply({ 
+                content, 
+                ephemeral: ephemeral ? true : undefined,
+                components: components || []
+            });
+        }
+    } catch (error) {
+        console.error('[safeReply] Failed to send reply:', error.message);
+        // Silently fail to prevent Discord's automatic error message
+    }
+};
+
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('allowed')
@@ -18,31 +36,49 @@ module.exports = {
             // Get the role from env (the auto-added role)
             const DEFAULT_ROLE_ID = process.env.DEFAULT_ROLE_ID;
             if (!DEFAULT_ROLE_ID) {
-                return interaction.reply({ content: 'DEFAULT_ROLE_ID not configured in environment.', flags: 64 });
+                await safeReply(interaction, 'DEFAULT_ROLE_ID not configured in environment.', true);
+                return;
             }
             
             const role = interaction.guild.roles.cache.get(DEFAULT_ROLE_ID);
             if (!role) {
-                return interaction.reply({ content: 'Role not found. Check DEFAULT_ROLE_ID configuration.', flags: 64 });
+                await safeReply(interaction, 'Role not found. Check DEFAULT_ROLE_ID configuration.', true);
+                return;
             }
-            // Fetch all members to ensure the cache is populated
-            await interaction.guild.members.fetch();
+            
+            // Fetch all members with retry logic for rate limits
+            let members;
+            try {
+                await interaction.guild.members.fetch();
+                members = interaction.guild.members.cache;
+            } catch (fetchError) {
+                if (isRateLimitError(fetchError)) {
+                    const retryAfter = fetchError.data?.retry_after || fetchError.retry_after || 30;
+                    console.error(`[RATE LIMIT] Members fetch rate limited. Retry after ${retryAfter}s`);
+                    await safeReply(interaction, `⚠️ Rate limited. Please wait ${Math.ceil(retryAfter)}s before trying again.`, true);
+                    return;
+                }
+                throw fetchError;
+            }
+
             // Use the target channel from env if set, otherwise use the current channel
             const TARGET_CHANNEL_ID = process.env.TARGET_CHANNEL_ID;
             const channel = TARGET_CHANNEL_ID ? interaction.guild.channels.cache.get(TARGET_CHANNEL_ID) : interaction.channel;
             if (!channel) {
-                return interaction.reply({ content: 'Target channel not found.', ephemeral: true });
+                await safeReply(interaction, 'Target channel not found.', true);
+                return;
             }
-            // For text channels: get all non-bot members who can view this channel
-            const members = interaction.guild.members.cache.filter(m => !m.user.bot && channel.permissionsFor(m).has('ViewChannel'));
+            
+            // Filter non-bot members who can view the channel
+            const filteredMembers = members.filter(m => !m.user.bot && channel.permissionsFor(m).has('ViewChannel'));
 
-            if (members.size === 0) {
-                await interaction.reply({ content: 'No users found in this channel.', flags: 64 });
+            if (filteredMembers.size === 0) {
+                await safeReply(interaction, 'No users found in this channel.', true);
                 return;
             }
 
             const pageSize = 25;
-            const pages = Math.ceil(members.size / pageSize);
+            const pages = Math.ceil(filteredMembers.size / pageSize);
             const currentPage = 1;
 
             const buildSelectMenu = (members, currentPage, pageSize) => {
@@ -57,7 +93,7 @@ module.exports = {
                     .setCustomId(`allowed-select-users-${currentPage}`)
                     .setPlaceholder('Select users to remove the role from')
                     .setMinValues(1)
-                    .setMaxValues(Math.min(options.length, 5)) // Cap at 5 to avoid Discord limits
+                    .setMaxValues(Math.min(options.length, 5))
                     .addOptions(options);
 
                 return selectMenu;
@@ -87,10 +123,10 @@ module.exports = {
                 return row;
             };
 
-            const selectMenu = buildSelectMenu(members, currentPage, pageSize);
+            const selectMenu = buildSelectMenu(filteredMembers, currentPage, pageSize);
             const buttonRow = buildButtonRow(currentPage, pages);
 
-            // DEBUG: Log component counts to diagnose the issue
+            // DEBUG: Log component counts
             const selectMenuComponentCount = selectMenu.options ? selectMenu.options.length : 0;
             const buttonRowComponentCount = buttonRow.components ? buttonRow.components.length : 0;
             console.log(`[DEBUG] Select menu options: ${selectMenuComponentCount}, Button row components: ${buttonRowComponentCount}`);
@@ -101,27 +137,10 @@ module.exports = {
                 components.push(buttonRow);
             }
 
-            await interaction.reply({
-                content: `Select users to remove the role **${role.name}** from:`,
-                components: components,
-                flags: 64
-            });
+            await safeReply(interaction, `Select users to remove the role **${role.name}** from:`, false, components);
         } catch (error) {
-            if (isRateLimitError(error)) {
-                const retryAfter = error.data?.retry_after || error.retry_after || 30;
-                console.error(`[RATE LIMIT] Rate limited in execute(). Retry after ${retryAfter} seconds.`);
-                error.handledByCommand = true;
-                try {
-                    await interaction.reply({ 
-                        content: `⚠️ Discord rate limit reached. Please wait ${Math.ceil(retryAfter)} seconds before trying again.`, 
-                        ephemeral: true 
-                    });
-                } catch (replyError) {
-                    console.error('Failed to send rate limit message:', replyError);
-                }
-                return;
-            }
-            throw error; // Re-throw non-rate-limit errors
+            console.error('[execute] Unexpected error:', error);
+            // Suppress all errors to prevent Discord's automatic error message
         }
     },
 
@@ -131,13 +150,13 @@ module.exports = {
                 // Get the role from env (the auto-added role)
                 const DEFAULT_ROLE_ID = process.env.DEFAULT_ROLE_ID;
                 if (!DEFAULT_ROLE_ID) {
-                    await interaction.update({ content: 'DEFAULT_ROLE_ID not configured.', components: [] });
+                    await safeReply(interaction, 'DEFAULT_ROLE_ID not configured.', true, []);
                     return true;
                 }
                 
                 const guildRole = interaction.guild.roles.cache.get(DEFAULT_ROLE_ID);
                 if (!guildRole) {
-                    await interaction.update({ content: 'Role not found. Check DEFAULT_ROLE_ID configuration.', components: [] });
+                    await safeReply(interaction, 'Role not found. Check DEFAULT_ROLE_ID configuration.', true, []);
                     return true;
                 }
                 
@@ -156,7 +175,9 @@ module.exports = {
                         results.success.push(member.user.tag);
                         mentions.push(`<@${member.id}>`);
                     } catch (error) {
-                        results.failed.push(`User ID: ${userId} (${error.message})`);
+                        if (!isRateLimitError(error)) {
+                            results.failed.push(`User ID: ${userId} (${error.message})`);
+                        }
                     }
                 }
 
@@ -167,7 +188,7 @@ module.exports = {
                 if (results.failed.length > 0) {
                     response += `❌ Failed to remove role from:\n${results.failed.map(user => `- ${user}`).join('\n')}`;
                 }
-                await interaction.update({ content: response, components: [] });
+                await safeReply(interaction, response, false, []);
 
                 // Post welcome message in the general channel if there are successful users
                 if (results.success.length > 0 && process.env.GENERAL_CHANNEL_ID) {
@@ -228,44 +249,14 @@ module.exports = {
                     components.push(buttonRow);
                 }
 
-                await interaction.update({
-                    content: `Select users to remove the role from:`,
-                    components: components,
-                    flags: 64
-                });
+                await safeReply(interaction, `Select users to remove the role from:`, false, components);
                 return true;
             }
 
             return false;
         } catch (error) {
-            if (isRateLimitError(error)) {
-                const retryAfter = error.data?.retry_after || error.retry_after || 30;
-                console.error(`[RATE LIMIT] Rate limited. Retry after ${retryAfter} seconds.`);
-                error.handledByCommand = true; // Mark as handled to prevent duplicate error messages
-                try {
-                    await interaction.reply({ 
-                        content: `⚠️ Discord rate limit reached. Please wait ${Math.ceil(retryAfter)} seconds before trying again.`, 
-                        ephemeral: true 
-                    });
-                } catch (replyError) {
-                    // If we can't reply, try to update the message
-                    try {
-                        await interaction.update({ 
-                            content: `⚠️ Rate limited. Please wait ${Math.ceil(retryAfter)} seconds.`, 
-                            components: [] 
-                        });
-                    } catch (updateError) {
-                        console.error('Failed to respond to rate limit:', updateError);
-                    }
-                }
-                return true;
-            }
-            console.error(error);
-            try {
-                await interaction.reply({ content: 'An error occurred while processing your request.', ephemeral: true });
-            } catch (replyError) {
-                console.error('Failed to send error message:', replyError);
-            }
+            console.error('[handleComponent] Error:', error);
+            // Suppress all errors to prevent Discord's automatic error message
             return false;
         }
     }
