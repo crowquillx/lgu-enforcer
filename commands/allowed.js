@@ -14,97 +14,115 @@ module.exports = {
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles),
 
     async execute(interaction) {
-        // Get the role from env (the auto-added role)
-        const DEFAULT_ROLE_ID = process.env.DEFAULT_ROLE_ID;
-        if (!DEFAULT_ROLE_ID) {
-            return interaction.reply({ content: 'DEFAULT_ROLE_ID not configured in environment.', flags: 64 });
-        }
-        
-        const role = interaction.guild.roles.cache.get(DEFAULT_ROLE_ID);
-        if (!role) {
-            return interaction.reply({ content: 'Role not found. Check DEFAULT_ROLE_ID configuration.', flags: 64 });
-        }
-        // Fetch all members to ensure the cache is populated
-        await interaction.guild.members.fetch();
-        // Use the target channel from env if set, otherwise use the current channel
-        const TARGET_CHANNEL_ID = process.env.TARGET_CHANNEL_ID;
-        const channel = TARGET_CHANNEL_ID ? interaction.guild.channels.cache.get(TARGET_CHANNEL_ID) : interaction.channel;
-        if (!channel) {
-            return interaction.reply({ content: 'Target channel not found.', ephemeral: true });
-        }
-        // For text channels: get all non-bot members who can view this channel
-        const members = interaction.guild.members.cache.filter(m => !m.user.bot && channel.permissionsFor(m).has('ViewChannel'));
+        try {
+            // Get the role from env (the auto-added role)
+            const DEFAULT_ROLE_ID = process.env.DEFAULT_ROLE_ID;
+            if (!DEFAULT_ROLE_ID) {
+                return interaction.reply({ content: 'DEFAULT_ROLE_ID not configured in environment.', flags: 64 });
+            }
+            
+            const role = interaction.guild.roles.cache.get(DEFAULT_ROLE_ID);
+            if (!role) {
+                return interaction.reply({ content: 'Role not found. Check DEFAULT_ROLE_ID configuration.', flags: 64 });
+            }
+            // Fetch all members to ensure the cache is populated
+            await interaction.guild.members.fetch();
+            // Use the target channel from env if set, otherwise use the current channel
+            const TARGET_CHANNEL_ID = process.env.TARGET_CHANNEL_ID;
+            const channel = TARGET_CHANNEL_ID ? interaction.guild.channels.cache.get(TARGET_CHANNEL_ID) : interaction.channel;
+            if (!channel) {
+                return interaction.reply({ content: 'Target channel not found.', ephemeral: true });
+            }
+            // For text channels: get all non-bot members who can view this channel
+            const members = interaction.guild.members.cache.filter(m => !m.user.bot && channel.permissionsFor(m).has('ViewChannel'));
 
-        if (members.size === 0) {
-            await interaction.reply({ content: 'No users found in this channel.', flags: 64 });
-            return;
-        }
-
-        const pageSize = 25;
-        const pages = Math.ceil(members.size / pageSize);
-        const currentPage = 1;
-
-        const buildSelectMenu = (members, currentPage, pageSize) => {
-            const membersArray = Array.from(members?.values ? members.values() : members);
-            const options = membersArray.slice((currentPage - 1) * pageSize, currentPage * pageSize).map(member => ({
-                label: member.displayName,
-                description: member.user.tag,
-                value: member.id
-            }));
-
-            const selectMenu = new StringSelectMenuBuilder()
-                .setCustomId(`allowed-select-users-${currentPage}`)
-                .setPlaceholder('Select users to remove the role from')
-                .setMinValues(1)
-                .setMaxValues(Math.min(options.length, 5)) // Cap at 5 to avoid Discord limits
-                .addOptions(options);
-
-            return selectMenu;
-        };
-
-        const buildButtonRow = (currentPage, pages) => {
-            const row = new ActionRowBuilder();
-
-            if (currentPage > 1) {
-                row.addComponents(
-                    new ButtonBuilder()
-                        .setCustomId('allowed-prev-page')
-                        .setLabel('Previous')
-                        .setStyle(ButtonStyle.Primary)
-                );
+            if (members.size === 0) {
+                await interaction.reply({ content: 'No users found in this channel.', flags: 64 });
+                return;
             }
 
-            if (currentPage < pages) {
-                row.addComponents(
-                    new ButtonBuilder()
-                        .setCustomId('allowed-next-page')
-                        .setLabel('Next')
-                        .setStyle(ButtonStyle.Primary)
-                );
+            const pageSize = 25;
+            const pages = Math.ceil(members.size / pageSize);
+            const currentPage = 1;
+
+            const buildSelectMenu = (members, currentPage, pageSize) => {
+                const membersArray = Array.from(members?.values ? members.values() : members);
+                const options = membersArray.slice((currentPage - 1) * pageSize, currentPage * pageSize).map(member => ({
+                    label: member.displayName,
+                    description: member.user.tag,
+                    value: member.id
+                }));
+
+                const selectMenu = new StringSelectMenuBuilder()
+                    .setCustomId(`allowed-select-users-${currentPage}`)
+                    .setPlaceholder('Select users to remove the role from')
+                    .setMinValues(1)
+                    .setMaxValues(Math.min(options.length, 5)) // Cap at 5 to avoid Discord limits
+                    .addOptions(options);
+
+                return selectMenu;
+            };
+
+            const buildButtonRow = (currentPage, pages) => {
+                const row = new ActionRowBuilder();
+
+                if (currentPage > 1) {
+                    row.addComponents(
+                        new ButtonBuilder()
+                            .setCustomId('allowed-prev-page')
+                            .setLabel('Previous')
+                            .setStyle(ButtonStyle.Primary)
+                    );
+                }
+
+                if (currentPage < pages) {
+                    row.addComponents(
+                        new ButtonBuilder()
+                            .setCustomId('allowed-next-page')
+                            .setLabel('Next')
+                            .setStyle(ButtonStyle.Primary)
+                    );
+                }
+
+                return row;
+            };
+
+            const selectMenu = buildSelectMenu(members, currentPage, pageSize);
+            const buttonRow = buildButtonRow(currentPage, pages);
+
+            // DEBUG: Log component counts to diagnose the issue
+            const selectMenuComponentCount = selectMenu.options ? selectMenu.options.length : 0;
+            const buttonRowComponentCount = buttonRow.components ? buttonRow.components.length : 0;
+            console.log(`[DEBUG] Select menu options: ${selectMenuComponentCount}, Button row components: ${buttonRowComponentCount}`);
+
+            // Build components array - only include button row if it has buttons
+            const components = [new ActionRowBuilder().addComponents(selectMenu)];
+            if (buttonRowComponentCount > 0) {
+                components.push(buttonRow);
             }
 
-            return row;
-        };
-
-        const selectMenu = buildSelectMenu(members, currentPage, pageSize);
-        const buttonRow = buildButtonRow(currentPage, pages);
-
-        // DEBUG: Log component counts to diagnose the issue
-        const selectMenuComponentCount = selectMenu.options ? selectMenu.options.length : 0;
-        const buttonRowComponentCount = buttonRow.components ? buttonRow.components.length : 0;
-        console.log(`[DEBUG] Select menu options: ${selectMenuComponentCount}, Button row components: ${buttonRowComponentCount}`);
-
-        // Build components array - only include button row if it has buttons
-        const components = [new ActionRowBuilder().addComponents(selectMenu)];
-        if (buttonRowComponentCount > 0) {
-            components.push(buttonRow);
+            await interaction.reply({
+                content: `Select users to remove the role **${role.name}** from:`,
+                components: components,
+                flags: 64
+            });
+        } catch (error) {
+            if (isRateLimitError(error)) {
+                const retryAfter = error.data?.retry_after || error.retry_after || 30;
+                console.error(`[RATE LIMIT] Rate limited in execute(). Retry after ${retryAfter} seconds.`);
+                error.handledByCommand = true;
+                try {
+                    await interaction.reply({ 
+                        content: `⚠️ Discord rate limit reached. Please wait ${Math.ceil(retryAfter)} seconds before trying again.`, 
+                        ephemeral: true 
+                    });
+                } catch (replyError) {
+                    console.error('Failed to send rate limit message:', replyError);
+                }
+                return;
+            }
+            throw error; // Re-throw non-rate-limit errors
         }
-
-        await interaction.reply({
-            content: `Select users to remove the role **${role.name}** from:`,
-            components: components,
-            flags: 64
-        });
     },
 
     async handleComponent(interaction) {
@@ -223,6 +241,7 @@ module.exports = {
             if (isRateLimitError(error)) {
                 const retryAfter = error.data?.retry_after || error.retry_after || 30;
                 console.error(`[RATE LIMIT] Rate limited. Retry after ${retryAfter} seconds.`);
+                error.handledByCommand = true; // Mark as handled to prevent duplicate error messages
                 try {
                     await interaction.reply({ 
                         content: `⚠️ Discord rate limit reached. Please wait ${Math.ceil(retryAfter)} seconds before trying again.`, 

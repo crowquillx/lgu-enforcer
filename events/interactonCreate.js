@@ -15,6 +15,10 @@ module.exports = {
 		try {
 			await command.execute(interaction);
 		} catch (error) {
+            // Check if this is a rate limit error that was already handled by the command
+            if (error.handledByCommand) {
+                return;
+            }
 			console.error(`brother, something went wrong when running ${interaction.commandName}, please let tan know.`);
 			console.error(error);
 		}
