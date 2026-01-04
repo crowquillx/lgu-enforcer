@@ -6,17 +6,20 @@
    npm install
    ```
 3. Create a `.env` file in the root directory with the following variables:
-   ```
-   DISCORD_TOKEN=your_bot_token_here
-   CLIENT_ID=your_client_id_here
-   GUILD_ID=your_guild_id_here
-   GENERAL_CHANNEL_ID=your_general_channel_id_here
-   WELCOME_MESSAGE=Welcome to the server, {users}!
-   WELCOME_IMAGE_URL=https://example.com/welcome-image.png
-   DEFAULT_ROLE_ID=your_default_role_id_here
-   ```
-   - `{users}` in `WELCOME_MESSAGE` will be replaced with mentions of the selected users.
-   - `DEFAULT_ROLE_ID` is the ID of the role that will be automatically assigned to new members when they join the server.
+    ```
+    DISCORD_TOKEN=your_bot_token_here
+    CLIENT_ID=your_client_id_here
+    GUILD_ID=your_guild_id_here
+    GENERAL_CHANNEL_ID=your_general_channel_id_here
+    WELCOME_MESSAGE=Welcome to the server, {users}!
+    WELCOME_IMAGE_TYPE=local
+    WELCOME_IMAGE_PATH=./resources/MIMLSSK.png
+    WELCOME_IMAGE_URL=https://example.com/welcome-image.png
+    DEFAULT_ROLE_ID=your_default_role_id_here
+    ```
+    - `{users}` in `WELCOME_MESSAGE` will be replaced with mentions of the selected users.
+    - `DEFAULT_ROLE_ID` is the ID of the role that will be automatically assigned to new members when they join the server.
+    - See [Welcome Image Configuration](#welcome-image-configuration) for details on image options.
 4. Start the bot:
    ```bash
    node index.js
@@ -34,8 +37,44 @@ You can run the bot using Docker and Docker Compose:
    ```bash
    docker-compose down
    ```
-
-## Adding New Commands
+   
+   ## Welcome Image Configuration
+   
+   The welcome message supports flexible image configuration through three environment variables:
+   
+   ### Configuration Options
+   
+   - `WELCOME_IMAGE_TYPE`: Specifies the image source type
+     - Values: `"local"` or `"url"`
+     - Default: `"local"`
+   
+   - `WELCOME_IMAGE_PATH`: Local file path for local image type
+     - Default: `./resources/MIMLSSK.png`
+     - Used when `WELCOME_IMAGE_TYPE=local`
+   
+   - `WELCOME_IMAGE_URL`: URL for URL image type
+     - Used when `WELCOME_IMAGE_TYPE=url`
+     - Must be a publicly accessible image URL
+   
+   ### Usage Examples
+   
+   **Local Image Configuration:**
+   ```
+   WELCOME_IMAGE_TYPE=local
+   WELCOME_IMAGE_PATH=./resources/MIMLSSK.png
+   ```
+   
+   **URL Image Configuration:**
+   ```
+   WELCOME_IMAGE_TYPE=url
+   WELCOME_IMAGE_URL=https://example.com/welcome-image.png
+   ```
+   
+   ### Backward Compatibility
+   
+   The image configuration system is fully backward compatible. If no configuration is provided, the bot will use the default local image at `./resources/MIMLSSK.png`.
+   
+   ## Adding New Commands
 
 To add a new command:
 
@@ -82,7 +121,9 @@ Kicks selected users from the server and sends them a rejection message.
 - `GUILD_ID`: The server (guild) ID for command registration
 - `GENERAL_CHANNEL_ID`: Channel ID where welcome messages are posted
 - `WELCOME_MESSAGE`: Welcome message template (use `{users}` for mentions)
-- `WELCOME_IMAGE_URL`: Image URL to include in the welcome message
+- `WELCOME_IMAGE_TYPE`: Image source type (`"local"` or `"url"`, default: `"local"`)
+- `WELCOME_IMAGE_PATH`: Local file path for welcome image (default: `./resources/MIMLSSK.png`)
+- `WELCOME_IMAGE_URL`: URL for welcome image (used when `WELCOME_IMAGE_TYPE=url`)
 - `DEFAULT_ROLE_ID`: ID of the role to automatically assign to new members
 
 ## License

@@ -149,11 +149,29 @@ module.exports = {
                     const generalChannel = interaction.guild.channels.cache.get(process.env.GENERAL_CHANNEL_ID);
                     if (generalChannel) {
                         const welcomeMsg = (process.env.WELCOME_MESSAGE || 'Welcome to the server, {users}!').replace('{users}', mentions.join(' '));
-                        const imageUrl = process.env.WELCOME_IMAGE_URL;
-                        await generalChannel.send({
-                            content: welcomeMsg,
-                            files: imageUrl ? [imageUrl] : undefined
-                        });
+                        
+                        // Handle image based on configuration
+                        const imageType = process.env.WELCOME_IMAGE_TYPE?.toLowerCase();
+                        let messageOptions = { content: welcomeMsg };
+                        
+                        if (imageType === 'local') {
+                            // Use local file path
+                            const imagePath = process.env.WELCOME_IMAGE_PATH || './resources/MIMLSSK.png';
+                            messageOptions.files = [imagePath];
+                        } else if (imageType === 'url') {
+                            // Use URL image
+                            const imageUrl = process.env.WELCOME_IMAGE_URL;
+                            if (imageUrl) {
+                                messageOptions.embeds = [{
+                                    image: { url: imageUrl }
+                                }];
+                            }
+                        } else {
+                            // Fall back to default behavior (local file)
+                            messageOptions.files = ['./resources/MIMLSSK.png'];
+                        }
+                        
+                        await generalChannel.send(messageOptions);
                     }
                 }
                 return true;
