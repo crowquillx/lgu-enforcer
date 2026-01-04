@@ -1,17 +1,22 @@
-const { SlashCommandBuilder, PermissionFlagsBits, ActionRowBuilder, StringSelectMenuBuilder, ComponentType, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('allowed')
-        .setDescription('Remove a role from multiple users')
-        .addRoleOption(option =>
-            option.setName('role')
-                .setDescription('The role to remove')
-                .setRequired(true))
+        .setDescription('Remove the applicant role from users (always uses the auto-added role)')
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles),
 
     async execute(interaction) {
-        const role = interaction.options.getRole('role');
+        // Get the role from env (the auto-added role)
+        const DEFAULT_ROLE_ID = process.env.DEFAULT_ROLE_ID;
+        if (!DEFAULT_ROLE_ID) {
+            return interaction.reply({ content: 'DEFAULT_ROLE_ID not configured in environment.', flags: 64 });
+        }
+        
+        const role = interaction.guild.roles.cache.get(DEFAULT_ROLE_ID);
+        if (!role) {
+            return interaction.reply({ content: 'Role not found. Check DEFAULT_ROLE_ID configuration.', flags: 64 });
+        }
         // Fetch all members to ensure the cache is populated
         await interaction.guild.members.fetch();
         // Use the target channel from env if set, otherwise use the current channel
@@ -44,7 +49,7 @@ module.exports = {
                 .setCustomId(`allowed-select-users-${currentPage}`)
                 .setPlaceholder('Select users to remove the role from')
                 .setMinValues(1)
-                .setMaxValues(options.length)
+                .setMaxValues(Math.min(options.length, 5)) // Cap at 5 to avoid Discord limits
                 .addOptions(options);
 
             return selectMenu;
@@ -77,9 +82,20 @@ module.exports = {
         const selectMenu = buildSelectMenu(members, currentPage, pageSize);
         const buttonRow = buildButtonRow(currentPage, pages);
 
+        // DEBUG: Log component counts to diagnose the issue
+        const selectMenuComponentCount = selectMenu.options ? selectMenu.options.length : 0;
+        const buttonRowComponentCount = buttonRow.components ? buttonRow.components.length : 0;
+        console.log(`[DEBUG] Select menu options: ${selectMenuComponentCount}, Button row components: ${buttonRowComponentCount}`);
+
+        // Build components array - only include button row if it has buttons
+        const components = [new ActionRowBuilder().addComponents(selectMenu)];
+        if (buttonRowComponentCount > 0) {
+            components.push(buttonRow);
+        }
+
         await interaction.reply({
             content: `Select users to remove the role **${role.name}** from:`,
-            components: [new ActionRowBuilder().addComponents(selectMenu), buttonRow],
+            components: components,
             flags: 64
         });
     },
@@ -87,13 +103,20 @@ module.exports = {
     async handleComponent(interaction) {
         try {
             if (interaction.customId.startsWith('allowed-select-users')) {
-                const roleMatch = interaction.message.content.match(/\*\*(.+)\*\*/);
-                if (!roleMatch) {
-                    await interaction.update({ content: 'Role not found in message.', components: [] });
+                // Get the role from env (the auto-added role)
+                const DEFAULT_ROLE_ID = process.env.DEFAULT_ROLE_ID;
+                if (!DEFAULT_ROLE_ID) {
+                    await interaction.update({ content: 'DEFAULT_ROLE_ID not configured.', components: [] });
                     return true;
                 }
+                
+                const guildRole = interaction.guild.roles.cache.get(DEFAULT_ROLE_ID);
+                if (!guildRole) {
+                    await interaction.update({ content: 'Role not found. Check DEFAULT_ROLE_ID configuration.', components: [] });
+                    return true;
+                }
+                
                 const userIds = interaction.values;
-                const guildRole = interaction.guild.roles.cache.find(r => r.name === roleMatch[1]);
                 const results = { success: [], failed: [] };
                 const mentions = [];
 
@@ -152,9 +175,19 @@ module.exports = {
                 const selectMenu = buildSelectMenu(members, newPage, pageSize);
                 const buttonRow = buildButtonRow(newPage, pages);
 
+                // DEBUG: Log pagination info
+                console.log(`[DEBUG] Pagination: currentPage=${currentPage}, newPage=${newPage}, pages=${pages}`);
+                console.log(`[DEBUG] Button row components: ${buttonRow.components ? buttonRow.components.length : 0}`);
+
+                // Build components array - only include button row if it has buttons
+                const components = [new ActionRowBuilder().addComponents(selectMenu)];
+                if (buttonRow.components && buttonRow.components.length > 0) {
+                    components.push(buttonRow);
+                }
+
                 await interaction.update({
-                    content: `Select users to remove the role **${interaction.message.content.match(/\*\*(.+)\*\*/)[1]}** from:`,
-                    components: [new ActionRowBuilder().addComponents(selectMenu), buttonRow],
+                    content: `Select users to remove the role from:`,
+                    components: components,
                     flags: 64
                 });
                 return true;
