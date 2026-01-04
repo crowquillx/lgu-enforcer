@@ -1,5 +1,27 @@
 const { SlashCommandBuilder, PermissionFlagsBits, ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle, GatewayRateLimitError } = require('discord.js');
 
+// Member cache with TTL to reduce rate limiting
+const memberCache = new Map();
+const CACHE_TTL_MS = 60 * 1000; // 1 minute cache
+
+// Helper function to get cached or fresh members
+const getCachedMembers = async (guild) => {
+    const now = Date.now();
+    const cached = memberCache.get(guild.id);
+    
+    if (cached && (now - cached.timestamp < CACHE_TTL_MS)) {
+        console.log(`[CACHE] Using cached members (${cached.members.size} members, age: ${Math.round((now - cached.timestamp) / 1000)}s)`);
+        return cached.members;
+    }
+    
+    console.log(`[CACHE] Cache miss or expired, fetching fresh members from Discord API`);
+    await guild.members.fetch();
+    const members = guild.members.cache.clone(); // Clone to prevent mutation
+    memberCache.set(guild.id, { members, timestamp: now });
+    console.log(`[CACHE] Cached ${members.size} members for ${guild.id}`);
+    return members;
+};
+
 // Helper function to check if an error is a rate limit error
 const isRateLimitError = (error) => {
     return error instanceof GatewayRateLimitError || 
@@ -46,11 +68,14 @@ module.exports = {
                 return;
             }
             
-            // Fetch all members with retry logic for rate limits
+            // Fetch all members with caching to reduce rate limiting
             let members;
             try {
-                await interaction.guild.members.fetch();
-                members = interaction.guild.members.cache;
+                console.log('[DEBUG] Starting guild.members.fetch() - using cache to reduce API calls');
+                const fetchStartTime = Date.now();
+                members = await getCachedMembers(interaction.guild);
+                const fetchDuration = Date.now() - fetchStartTime;
+                console.log(`[DEBUG] Members ready in ${fetchDuration}ms, total available: ${members.size}`);
             } catch (fetchError) {
                 if (isRateLimitError(fetchError)) {
                     const retryAfter = fetchError.data?.retry_after || fetchError.retry_after || 30;
@@ -166,14 +191,19 @@ module.exports = {
 
                 for (const userId of userIds) {
                     try {
-                        const member = await interaction.guild.members.fetch(userId);
+                        console.log(`[DEBUG] Fetching member ${userId}`);
+                        const member = interaction.guild.members.cache.get(userId) || await interaction.guild.members.fetch({ user: userId, cache: true });
                         if (!member.roles.cache.has(guildRole.id)) {
                             results.failed.push(`${member.user.tag} (didn't have the role)`);
                             continue;
                         }
+                        console.log(`[DEBUG] Removing role from ${member.user.tag}`);
                         await member.roles.remove(guildRole);
                         results.success.push(member.user.tag);
                         mentions.push(`<@${member.id}>`);
+                        
+                        // Add delay between role operations to prevent rate limiting
+                        await new Promise(resolve => setTimeout(resolve, 150));
                     } catch (error) {
                         if (!isRateLimitError(error)) {
                             results.failed.push(`User ID: ${userId} (${error.message})`);
@@ -194,6 +224,7 @@ module.exports = {
                 if (results.success.length > 0 && process.env.GENERAL_CHANNEL_ID) {
                     const generalChannel = interaction.guild.channels.cache.get(process.env.GENERAL_CHANNEL_ID);
                     if (generalChannel) {
+                        console.log(`[DEBUG] Sending welcome message to channel ${generalChannel.id} with ${results.success.length} successful users`);
                         const welcomeMsg = (process.env.WELCOME_MESSAGE || 'Welcome to the server, {users}!').replace('{users}', mentions.join(' '));
                         
                         // Handle image based on configuration
@@ -204,6 +235,7 @@ module.exports = {
                             // Use local file path
                             const imagePath = process.env.WELCOME_IMAGE_PATH || './resources/MIMLSSK.png';
                             messageOptions.files = [imagePath];
+                            console.log('[DEBUG] Including local image in welcome message');
                         } else if (imageType === 'url') {
                             // Use URL image
                             const imageUrl = process.env.WELCOME_IMAGE_URL;
@@ -211,13 +243,17 @@ module.exports = {
                                 messageOptions.embeds = [{
                                     image: { url: imageUrl }
                                 }];
+                                console.log('[DEBUG] Including URL image in welcome message');
                             }
                         } else {
                             // Fall back to default behavior (local file)
                             messageOptions.files = ['./resources/MIMLSSK.png'];
+                            console.log('[DEBUG] Using default local image in welcome message');
                         }
                         
+                        console.log('[DEBUG] About to send welcome message to general channel');
                         await generalChannel.send(messageOptions);
+                        console.log('[DEBUG] Welcome message sent successfully');
                     }
                 }
                 return true;
