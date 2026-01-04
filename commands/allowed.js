@@ -137,7 +137,7 @@ module.exports = {
                 components.push(buttonRow);
             }
 
-            await safeReply(interaction, `Select users to remove the role **${role.name}** from:`, false, components);
+            await safeReply(interaction, `Select users to remove the role **${role.name}** from:`, true, components);
         } catch (error) {
             console.error('[execute] Unexpected error:', error);
             // Suppress all errors to prevent Discord's automatic error message
@@ -188,7 +188,7 @@ module.exports = {
                 if (results.failed.length > 0) {
                     response += `❌ Failed to remove role from:\n${results.failed.map(user => `- ${user}`).join('\n')}`;
                 }
-                await safeReply(interaction, response, false, []);
+                await safeReply(interaction, response, true, []);
 
                 // Post welcome message in the general channel if there are successful users
                 if (results.success.length > 0 && process.env.GENERAL_CHANNEL_ID) {
@@ -249,7 +249,7 @@ module.exports = {
                     components.push(buttonRow);
                 }
 
-                await safeReply(interaction, `Select users to remove the role from:`, false, components);
+                await safeReply(interaction, `Select users to remove the role from:`, true, components);
                 return true;
             }
 
