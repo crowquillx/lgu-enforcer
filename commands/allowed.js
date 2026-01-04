@@ -1,4 +1,11 @@
-const { SlashCommandBuilder, PermissionFlagsBits, ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle, GatewayRateLimitError } = require('discord.js');
+
+// Helper function to check if an error is a rate limit error
+const isRateLimitError = (error) => {
+    return error instanceof GatewayRateLimitError || 
+           (error.name === 'GatewayRateLimitError') || 
+           (error.code === 50035 && error.status === 429);
+};
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -213,8 +220,33 @@ module.exports = {
 
             return false;
         } catch (error) {
+            if (isRateLimitError(error)) {
+                const retryAfter = error.data?.retry_after || error.retry_after || 30;
+                console.error(`[RATE LIMIT] Rate limited. Retry after ${retryAfter} seconds.`);
+                try {
+                    await interaction.reply({ 
+                        content: `⚠️ Discord rate limit reached. Please wait ${Math.ceil(retryAfter)} seconds before trying again.`, 
+                        ephemeral: true 
+                    });
+                } catch (replyError) {
+                    // If we can't reply, try to update the message
+                    try {
+                        await interaction.update({ 
+                            content: `⚠️ Rate limited. Please wait ${Math.ceil(retryAfter)} seconds.`, 
+                            components: [] 
+                        });
+                    } catch (updateError) {
+                        console.error('Failed to respond to rate limit:', updateError);
+                    }
+                }
+                return true;
+            }
             console.error(error);
-            await interaction.reply({ content: 'An error occurred while processing your request.', ephemeral: true });
+            try {
+                await interaction.reply({ content: 'An error occurred while processing your request.', ephemeral: true });
+            } catch (replyError) {
+                console.error('Failed to send error message:', replyError);
+            }
             return false;
         }
     }
