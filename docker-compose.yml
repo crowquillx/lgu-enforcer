@@ -1,10 +1,6 @@
-version: '3.8'
-
 services:
   bot:
-    build: 
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/crowquillx/lgu-enforcer:latest
     container_name: discord-bot
     restart: unless-stopped
     env_file:
@@ -12,7 +8,8 @@ services:
     volumes:
       - ./logs:/app/logs
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (r) => r.statusCode === 200 ? process.exit(0) : process.exit(1))"]
+      # Bot has no HTTP server; verify the welcome image is present in the image.
+      test: ["CMD", "node", "-e", "require('fs').accessSync('resources/MIMLSSK.png'); process.exit(0)"]
       interval: 30s
       timeout: 10s
-      retries: 3 
+      retries: 3

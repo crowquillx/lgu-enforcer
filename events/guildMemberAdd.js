@@ -20,12 +20,24 @@ module.exports = {
                 return;
             }
 
-            // Get the role from the guild
-            const role = member.guild.roles.cache.get(defaultRoleId);
+            // Get the role from the guild (fetch if missing from cache)
+            let role = member.guild.roles.cache.get(defaultRoleId);
+            if (!role) {
+                try {
+                    role = await member.guild.roles.fetch(defaultRoleId);
+                } catch (fetchError) {
+                    console.log(`[guildMemberAdd] Failed to fetch role ${defaultRoleId}:`, fetchError.message);
+                }
+            }
             console.log(`[guildMemberAdd] Fetched role:`, role ? {id: role.id, name: role.name} : null);
             
             if (!role) {
                 console.log(`[guildMemberAdd] Default role with ID ${defaultRoleId} not found in guild ${member.guild?.name} (${member.guild?.id})`);
+                return;
+            }
+
+            if (member.roles.cache.has(role.id)) {
+                console.log(`[guildMemberAdd] User ${member.user.tag} already has role ${role.name}`);
                 return;
             }
 

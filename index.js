@@ -7,11 +7,8 @@ const path = require('path');
 const client = new Client({
 	intents: [
 		GatewayIntentBits.Guilds,
-		GatewayIntentBits.GuildMessages,
-		GatewayIntentBits.MessageContent,
 		GatewayIntentBits.GuildMembers,
 		GatewayIntentBits.DirectMessages,
-		GatewayIntentBits.GuildPresences
 	],
 	partials: [
 		Partials.Channel,
@@ -31,7 +28,7 @@ const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('
 for (const file of commandFiles) {
 	const filePath = path.join(commandsPath, file);
 	const command = require(filePath);
-	
+
 	if ('data' in command && 'execute' in command) {
 		client.commands.set(command.data.name, command);
 	} else {
@@ -43,23 +40,23 @@ for (const file of commandFiles) {
 const eventsPath = path.join(__dirname, 'events');
 const eventFiles = fs.readdirSync(eventsPath).filter(file => file.endsWith('.js'));
 for (const file of eventFiles) {
-    const filePath = path.join(eventsPath, file);
-    const event = require(filePath);
-    if (!event || !event.name || typeof event.execute !== 'function') {
-        console.log(`[WARNING] The event at ${filePath} is missing a required "name" or "execute" property.`);
-        continue;
-    }
-    if (event.once) {
-        client.once(event.name, (...args) => {
-            console.log(`[EVENT] (once) ${event.name} triggered with args:`, args.map(a => a?.user?.tag || a?.id || typeof a));
-            event.execute(...args);
-        });
-    } else {
-        client.on(event.name, (...args) => {
-            console.log(`[EVENT] ${event.name} triggered with args:`, args.map(a => a?.user?.tag || a?.id || typeof a));
-            event.execute(...args);
-        });
-    }
+	const filePath = path.join(eventsPath, file);
+	const event = require(filePath);
+	if (!event || !event.name || typeof event.execute !== 'function') {
+		console.log(`[WARNING] The event at ${filePath} is missing a required "name" or "execute" property.`);
+		continue;
+	}
+	if (event.once) {
+		client.once(event.name, (...args) => {
+			console.log(`[EVENT] (once) ${event.name} triggered with args:`, args.map(a => a?.user?.tag || a?.id || typeof a));
+			event.execute(...args);
+		});
+	} else {
+		client.on(event.name, (...args) => {
+			console.log(`[EVENT] ${event.name} triggered with args:`, args.map(a => a?.user?.tag || a?.id || typeof a));
+			event.execute(...args);
+		});
+	}
 }
 
 // Function to deploy commands
@@ -91,12 +88,22 @@ async function deployCommands() {
 // When the client is ready, run this code (only once)
 client.once(Events.ClientReady, async readyClient => {
 	console.log(`Ready! Logged in as ${readyClient.user.tag}`);
-	
+
 	// Deploy commands when the bot starts
 	await deployCommands();
 });
 
-// Handle interactions
+async function handleCommandComponent(interaction) {
+	for (const [, command] of client.commands) {
+		if (typeof command.handleComponent === 'function') {
+			const handled = await command.handleComponent(interaction);
+			if (handled) return true;
+		}
+	}
+	return false;
+}
+
+// Single interaction router (commands + select menus + buttons)
 client.on(Events.InteractionCreate, async interaction => {
 	if (interaction.isAutocomplete()) {
 		const command = interaction.client.commands.get(interaction.commandName);
@@ -114,16 +121,26 @@ client.on(Events.InteractionCreate, async interaction => {
 		return;
 	}
 
-	// Handle select menu interactions for commands
-	if (interaction.isStringSelectMenu()) {
-		// Try to find a command that can handle this component
-		for (const [, command] of client.commands) {
-			if (typeof command.handleComponent === 'function') {
-				const handled = await command.handleComponent(interaction);
-				if (handled) return;
+	// Route select menus and buttons to command component handlers
+	if (interaction.isStringSelectMenu() || interaction.isButton()) {
+		try {
+			const handled = await handleCommandComponent(interaction);
+			if (!handled) {
+				console.error(`No command handled the ${interaction.isButton() ? 'button' : 'select menu'} interaction: ${interaction.customId}`);
+			}
+		} catch (error) {
+			console.error('Error handling component interaction:', error);
+			try {
+				const payload = { content: 'There was an error while processing that interaction.', ephemeral: true };
+				if (interaction.replied || interaction.deferred) {
+					await interaction.followUp(payload);
+				} else if (interaction.isRepliable()) {
+					await interaction.reply(payload);
+				}
+			} catch (replyError) {
+				console.error('Failed to send component error reply:', replyError);
 			}
 		}
-		console.error('No command handled the select menu interaction.');
 		return;
 	}
 
@@ -140,10 +157,15 @@ client.on(Events.InteractionCreate, async interaction => {
 		await command.execute(interaction);
 	} catch (error) {
 		console.error(error);
-		if (interaction.replied || interaction.deferred) {
-			await interaction.followUp({ content: 'There was an error while executing this command!', ephemeral: true });
-		} else {
-			await interaction.reply({ content: 'There was an error while executing this command!', ephemeral: true });
+		const payload = { content: 'There was an error while executing this command!', ephemeral: true };
+		try {
+			if (interaction.replied || interaction.deferred) {
+				await interaction.followUp(payload);
+			} else {
+				await interaction.reply(payload);
+			}
+		} catch (replyError) {
+			console.error('Failed to send command error reply:', replyError);
 		}
 	}
 });
